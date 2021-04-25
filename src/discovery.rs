@@ -85,7 +85,7 @@ where
     grant_types_supported: Option<Vec<G>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     acr_values_supported: Option<Vec<AuthenticationContextClass>>,
-    #[serde(bound(deserialize = "S: SubjectIdentifierType"))]
+    #[serde(deserialize_with = "deserialize_subject_identifier_types")]
     subject_types_supported: Vec<S>,
     #[serde(bound(deserialize = "JS: JwsSigningAlgorithm<JT>"))]
     id_token_signing_alg_values_supported: Vec<JS>,
@@ -1444,5 +1444,79 @@ mod tests {
         let redeserialized_metadata: CoreProviderMetadata =
             serde_json::from_str(&serialized_json).unwrap();
         assert_eq!(provider_metadata, redeserialized_metadata);
+    }
+
+    // Tests that a subject_types_supported: "foo" works.
+    #[test]
+    fn test_discovery_deserialization_subject_types_one() {
+        let json_response = "{
+        \"issuer\" : \"https://rp.certification.openid.net:8080/openidconnect-rs/rp-response_type-code\",
+        \"authorization_endpoint\" : \"https://rp.certification.openid.net:8080/openidconnect-rs/rp-response_type-code/authorization\",
+        \"jwks_uri\" : \"https://rp.certification.openid.net:8080/static/jwks_oMXD5waO08Q1GEnv.json\",
+        \"response_types_supported\" : [
+           \"code\",
+           \"code token\",
+           \"code id_token\",
+           \"id_token token\",
+           \"code id_token token\",
+           \"token id_token\",
+           \"token id_token code\",
+           \"id_token\",
+           \"token\"
+        ],
+        \"subject_types_supported\" : \"pairwise\",
+        \"id_token_signing_alg_values_supported\" : [
+           \"HS256\",
+           \"HS384\",
+           \"HS512\"
+        ],
+        \"display_values_supported\" : [
+           \"page\",
+           \"popup\",
+           \"touch\",
+           \"wap\"
+        ],
+        \"service_documentation\" : \"https://rp.certification.openid.net:8080/openidconnect-rs/rp-response_type-code/documentation\",
+        \"claims_locales_supported\" : [
+           \"de\",
+           \"fr\",
+           \"de-CH-1901\"
+        ],
+        \"ui_locales_supported\" : [
+           \"ja\",
+           \"sr-Latn\",
+           \"yue-HK\"
+        ],
+        \"op_policy_uri\" : \"https://rp.certification.openid.net:8080/openidconnect-rs/rp-response_type-code/op_policy\",
+        \"op_tos_uri\" : \"https://rp.certification.openid.net:8080/openidconnect-rs/rp-response_type-code/op_tos\"
+    }";
+
+        let provider_metadata: CoreProviderMetadata = serde_json::from_str(json_response).unwrap();
+
+        assert_eq!(
+            vec![CoreSubjectIdentifierType::Pairwise,],
+            *provider_metadata.subject_types_supported()
+        );
+    }
+}
+
+fn deserialize_subject_identifier_types<'de, D, S>(deserializer: D) -> Result<Vec<S>, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+    S: SubjectIdentifierType,
+{
+    use serde::de::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany<T> {
+        One(T),
+        Many(Vec<T>),
+    }
+
+    let one_or_many = OneOrMany::deserialize(deserializer)?;
+    match one_or_many {
+        OneOrMany::One(s) => Ok(vec![s]),
+        OneOrMany::Many(ss) => Ok(ss),
     }
 }
